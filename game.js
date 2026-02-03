@@ -94,10 +94,24 @@ let game = {
     killsThisWave: 0
 };
 
+// Mobile Detection
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+    ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+
+if (isMobile) document.body.classList.add('mobile');
+else document.body.classList.add('desktop');
+
 // Input
 const Input = {
-    keys: {}, mouse: { x: 0, y: 0, down: false }, lastMove: 0,
+    keys: {}, 
+    mouse: { x: 0, y: 0, down: false }, 
+    lastMove: 0,
+    // Mobile joysticks
+    moveJoy: { active: false, x: 0, y: 0, startX: 0, startY: 0, touchId: null },
+    aimJoy: { active: false, x: 0, y: 0, startX: 0, startY: 0, touchId: null },
+    
     init() {
+        // Keyboard
         window.addEventListener('keydown', e => {
             this.keys[e.code] = true;
             if (e.code === 'Space' && game.active && !game.paused) {
@@ -114,20 +128,163 @@ const Input = {
             this.keys[e.code] = false;
             if (e.code === 'KeyR') game.squad.forEach(p => p.reload());
         });
+
+        // Mouse
         window.addEventListener('mousemove', e => {
+            if (isMobile) return;
             const r = canvas.getBoundingClientRect();
             this.mouse.x = e.clientX - r.left;
             this.mouse.y = e.clientY - r.top;
             this.lastMove = performance.now();
         });
         window.addEventListener('mousedown', e => {
+            if (isMobile) return;
             this.mouse.down = true;
             if (game.showUpgradeUI) {
                 const choice = getUpgradeChoiceAt(e.clientX, e.clientY);
                 if (choice !== -1) selectUpgrade(choice);
             }
         });
-        window.addEventListener('mouseup', () => this.mouse.down = false);
+        window.addEventListener('mouseup', () => { if (!isMobile) this.mouse.down = false; });
+
+        // Touch / Mobile
+        if (isMobile) this.initMobile();
+    },
+
+    initMobile() {
+        const moveArea = document.getElementById('joystick-move');
+        const aimArea = document.getElementById('joystick-aim');
+        const stickMove = document.getElementById('stick-move');
+        const stickAim = document.getElementById('stick-aim');
+        const btnDash = document.getElementById('btn-dash');
+        const btnReload = document.getElementById('btn-reload');
+        const btnPause = document.getElementById('btn-pause');
+
+        // Joystick touch handlers
+        const handleJoystickStart = (e, joy, area) => {
+            e.preventDefault();
+            const touch = e.changedTouches[0];
+            const rect = area.getBoundingClientRect();
+            joy.active = true;
+            joy.touchId = touch.identifier;
+            joy.startX = rect.left + rect.width / 2;
+            joy.startY = rect.top + rect.height / 2;
+            joy.x = 0;
+            joy.y = 0;
+        };
+
+        const handleJoystickMove = (e, joy, stick, maxDist = 40) => {
+            e.preventDefault();
+            for (let touch of e.changedTouches) {
+                if (touch.identifier === joy.touchId) {
+                    let dx = touch.clientX - joy.startX;
+                    let dy = touch.clientY - joy.startY;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist > maxDist) {
+                        dx = (dx / dist) * maxDist;
+                        dy = (dy / dist) * maxDist;
+                    }
+                    joy.x = dx / maxDist;
+                    joy.y = dy / maxDist;
+                    stick.style.transform = `translate(${dx}px, ${dy}px)`;
+                }
+            }
+        };
+
+        const handleJoystickEnd = (e, joy, stick) => {
+            for (let touch of e.changedTouches) {
+                if (touch.identifier === joy.touchId) {
+                    joy.active = false;
+                    joy.x = 0;
+                    joy.y = 0;
+                    joy.touchId = null;
+                    stick.style.transform = 'translate(0, 0)';
+                }
+            }
+        };
+
+        // Move joystick
+        moveArea.addEventListener('touchstart', e => handleJoystickStart(e, this.moveJoy, moveArea), { passive: false });
+        moveArea.addEventListener('touchmove', e => handleJoystickMove(e, this.moveJoy, stickMove), { passive: false });
+        moveArea.addEventListener('touchend', e => handleJoystickEnd(e, this.moveJoy, stickMove), { passive: false });
+        moveArea.addEventListener('touchcancel', e => handleJoystickEnd(e, this.moveJoy, stickMove), { passive: false });
+
+        // Aim joystick
+        aimArea.addEventListener('touchstart', e => {
+            handleJoystickStart(e, this.aimJoy, aimArea);
+            this.mouse.down = true;
+        }, { passive: false });
+        aimArea.addEventListener('touchmove', e => {
+            handleJoystickMove(e, this.aimJoy, stickAim);
+            // Update mouse position for aiming
+            if (game.squad[0]) {
+                const leader = game.squad[0];
+                const aimDist = 300;
+                this.mouse.x = WIDTH / 2 + this.aimJoy.x * aimDist;
+                this.mouse.y = HEIGHT / 2 + this.aimJoy.y * aimDist;
+                this.lastMove = performance.now();
+            }
+        }, { passive: false });
+        aimArea.addEventListener('touchend', e => {
+            handleJoystickEnd(e, this.aimJoy, stickAim);
+            this.mouse.down = false;
+        }, { passive: false });
+        aimArea.addEventListener('touchcancel', e => {
+            handleJoystickEnd(e, this.aimJoy, stickAim);
+            this.mouse.down = false;
+        }, { passive: false });
+
+        // Buttons
+        btnDash.addEventListener('touchstart', e => {
+            e.preventDefault();
+            const leader = game.squad.find(p => p.isLeader);
+            if (leader && game.active && !game.paused) leader.dash();
+        }, { passive: false });
+
+        btnReload.addEventListener('touchstart', e => {
+            e.preventDefault();
+            game.squad.forEach(p => p.reload());
+        }, { passive: false });
+
+        btnPause.addEventListener('touchstart', e => {
+            e.preventDefault();
+            if (game.active) game.paused = !game.paused;
+        }, { passive: false });
+
+        // Upgrade selection on touch
+        canvas.addEventListener('touchstart', e => {
+            if (game.showUpgradeUI) {
+                const touch = e.changedTouches[0];
+                const choice = getUpgradeChoiceAt(touch.clientX, touch.clientY);
+                if (choice !== -1) {
+                    selectUpgrade(choice);
+                    e.preventDefault();
+                }
+            }
+        }, { passive: false });
+
+        // Prevent zoom/scroll
+        document.addEventListener('touchmove', e => {
+            if (e.touches.length > 1) e.preventDefault();
+        }, { passive: false });
+        
+        document.addEventListener('gesturestart', e => e.preventDefault());
+        document.addEventListener('gesturechange', e => e.preventDefault());
+    },
+
+    // Get move direction (works for both keyboard and joystick)
+    getMoveDir() {
+        if (isMobile && this.moveJoy.active) {
+            return { x: this.moveJoy.x, y: this.moveJoy.y, active: true };
+        }
+        return { x: 0, y: 0, active: false };
+    },
+
+    getAimDir() {
+        if (isMobile && this.aimJoy.active) {
+            return { x: this.aimJoy.x, y: this.aimJoy.y, active: true };
+        }
+        return { x: 0, y: 0, active: false };
     }
 };
 
@@ -218,8 +375,27 @@ class Player extends Entity {
 
     dash() {
         if (this.dashTimer > 0 || this.isDashing) return;
-        const dx = Input.mouse.x + game.camera.x - (this.x + this.w / 2);
-        const dy = Input.mouse.y + game.camera.y - (this.y + this.h / 2);
+        
+        let dx, dy;
+        if (isMobile) {
+            // Use move joystick direction, or aim joystick if move is inactive
+            const moveDir = Input.getMoveDir();
+            const aimDir = Input.getAimDir();
+            if (moveDir.active && (Math.abs(moveDir.x) > 0.1 || Math.abs(moveDir.y) > 0.1)) {
+                dx = moveDir.x;
+                dy = moveDir.y;
+            } else if (aimDir.active && (Math.abs(aimDir.x) > 0.1 || Math.abs(aimDir.y) > 0.1)) {
+                dx = aimDir.x;
+                dy = aimDir.y;
+            } else {
+                dx = this.facingRight ? 1 : -1;
+                dy = 0;
+            }
+        } else {
+            dx = Input.mouse.x + game.camera.x - (this.x + this.w / 2);
+            dy = Input.mouse.y + game.camera.y - (this.y + this.h / 2);
+        }
+        
         const dist = Math.sqrt(dx * dx + dy * dy);
         if (dist > 0) {
             this.dashDir = { x: dx / dist, y: dy / dist };
@@ -246,17 +422,28 @@ class Player extends Entity {
             this.dashTimer = Math.max(0, this.dashTimer - dt);
             
             if (this.isLeader) {
-                const targetX = Input.mouse.x + game.camera.x;
-                const targetY = Input.mouse.y + game.camera.y;
-                const dx = targetX - (this.x + this.w / 2);
-                const dy = targetY - (this.y + this.h / 2);
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                const isMouseMoving = (performance.now() - Input.lastMove) < 100;
-                if (dist > 10 && isMouseMoving) {
-                    this.vx = (dx / dist) * this.speed;
-                    this.vy = (dy / dist) * this.speed;
-                    this.facingRight = (dx > 0);
-                } else { this.vx = 0; this.vy = 0; }
+                // Mobile joystick movement
+                const moveDir = Input.getMoveDir();
+                if (isMobile && moveDir.active) {
+                    this.vx = moveDir.x * this.speed;
+                    this.vy = moveDir.y * this.speed;
+                    if (Math.abs(moveDir.x) > 0.1) this.facingRight = moveDir.x > 0;
+                } else if (!isMobile) {
+                    // Desktop mouse movement
+                    const targetX = Input.mouse.x + game.camera.x;
+                    const targetY = Input.mouse.y + game.camera.y;
+                    const dx = targetX - (this.x + this.w / 2);
+                    const dy = targetY - (this.y + this.h / 2);
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const isMouseMoving = (performance.now() - Input.lastMove) < 100;
+                    if (dist > 10 && isMouseMoving) {
+                        this.vx = (dx / dist) * this.speed;
+                        this.vy = (dy / dist) * this.speed;
+                        this.facingRight = (dx > 0);
+                    } else { this.vx = 0; this.vy = 0; }
+                } else {
+                    this.vx = 0; this.vy = 0;
+                }
             } else {
                 if (this.followTarget && !this.followTarget.dead) {
                     const dx = this.followTarget.x - this.x;
@@ -953,7 +1140,9 @@ function selectUpgrade(index) {
 }
 
 function getUpgradeChoiceAt(mx, my) {
-    const cardW = 200, cardH = 280, gap = 30;
+    const cardW = isMobile ? 150 : 200;
+    const cardH = isMobile ? 200 : 280;
+    const gap = isMobile ? 15 : 30;
     const startX = (WIDTH - cardW * 3 - gap * 2) / 2;
     const startY = (HEIGHT - cardH) / 2;
     for (let i = 0; i < 3; i++) {
@@ -967,12 +1156,17 @@ function drawUpgradeUI() {
     ctx.fillStyle = 'rgba(0,0,0,0.85)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-    ctx.fillStyle = '#0ff'; ctx.font = 'bold 36px Arial'; ctx.textAlign = 'center';
-    ctx.fillText('CHOOSE UPGRADE', WIDTH / 2, 70);
-    ctx.fillStyle = '#888'; ctx.font = '16px Arial';
-    ctx.fillText('Press 1, 2, 3 or Click', WIDTH / 2, 100);
+    ctx.fillStyle = '#0ff'; 
+    ctx.font = `bold ${isMobile ? 24 : 36}px Arial`; 
+    ctx.textAlign = 'center';
+    ctx.fillText('CHOOSE UPGRADE', WIDTH / 2, isMobile ? 50 : 70);
+    ctx.fillStyle = '#888'; 
+    ctx.font = `${isMobile ? 12 : 16}px Arial`;
+    ctx.fillText(isMobile ? 'Tap to select' : 'Press 1, 2, 3 or Click', WIDTH / 2, isMobile ? 75 : 100);
 
-    const cardW = 200, cardH = 280, gap = 30;
+    const cardW = isMobile ? 150 : 200;
+    const cardH = isMobile ? 200 : 280;
+    const gap = isMobile ? 15 : 30;
     const startX = (WIDTH - cardW * 3 - gap * 2) / 2;
     const startY = (HEIGHT - cardH) / 2;
 
@@ -982,23 +1176,27 @@ function drawUpgradeUI() {
         ctx.fillStyle = '#1a1a2e'; ctx.fillRect(cx, startY, cardW, cardH);
         ctx.strokeStyle = '#0ff'; ctx.lineWidth = 2; ctx.strokeRect(cx, startY, cardW, cardH);
 
-        ctx.fillStyle = '#0ff'; ctx.font = 'bold 24px Arial';
-        ctx.fillText(`[${i + 1}]`, cx + cardW / 2, startY + 35);
+        if (!isMobile) {
+            ctx.fillStyle = '#0ff'; ctx.font = 'bold 24px Arial';
+            ctx.fillText(`[${i + 1}]`, cx + cardW / 2, startY + 35);
+        }
 
         // Draw icon using game images
         const iconImg = up.icon === 'hp' ? ASSETS.item_hp : (up.icon === 'gun' ? ASSETS.item_gun : ASSETS.hero);
+        const iconY = isMobile ? startY + 20 : startY + 50;
+        const iconSize = isMobile ? 50 : 60;
         if (iconImg && iconImg.complete && iconImg.naturalWidth > 0) {
-            ctx.drawImage(iconImg, cx + cardW/2 - 30, startY + 50, 60, 60);
+            ctx.drawImage(iconImg, cx + cardW/2 - iconSize/2, iconY, iconSize, iconSize);
         } else {
-            ctx.fillStyle = '#0ff'; ctx.font = '48px Arial';
-            ctx.fillText('?', cx + cardW / 2, startY + 100);
+            ctx.fillStyle = '#0ff'; ctx.font = `${isMobile ? 36 : 48}px Arial`;
+            ctx.fillText('?', cx + cardW / 2, iconY + iconSize - 10);
         }
 
-        ctx.fillStyle = '#fff'; ctx.font = 'bold 18px Arial';
-        ctx.fillText(up.name, cx + cardW / 2, startY + 140);
+        ctx.fillStyle = '#fff'; ctx.font = `bold ${isMobile ? 14 : 18}px Arial`;
+        ctx.fillText(up.name, cx + cardW / 2, isMobile ? startY + 100 : startY + 140);
 
-        ctx.fillStyle = '#aaa'; ctx.font = '14px Arial';
-        ctx.fillText(up.desc, cx + cardW / 2, startY + 170);
+        ctx.fillStyle = '#aaa'; ctx.font = `${isMobile ? 11 : 14}px Arial`;
+        ctx.fillText(up.desc, cx + cardW / 2, isMobile ? startY + 125 : startY + 170);
     });
 
     ctx.textAlign = 'left';
@@ -1006,6 +1204,9 @@ function drawUpgradeUI() {
 
 // Minimap
 function drawMinimap() {
+    // Hide on mobile or make it smaller
+    if (isMobile) return; // Skip minimap on mobile to save screen space
+    
     const size = 150, margin = 20;
     const mx = WIDTH - size - margin, my = margin;
     const scale = 0.02;
@@ -1241,6 +1442,30 @@ function drawPostProcessing() {
 }
 
 function drawCrosshair() {
+    // Hide crosshair on mobile (use aim joystick instead)
+    if (isMobile) {
+        // Draw aim indicator only when aiming
+        const aimDir = Input.getAimDir();
+        if (aimDir.active && (Math.abs(aimDir.x) > 0.1 || Math.abs(aimDir.y) > 0.1)) {
+            const leader = game.squad[0];
+            if (leader) {
+                const aimX = WIDTH / 2 + aimDir.x * 100;
+                const aimY = HEIGHT / 2 + aimDir.y * 100;
+                ctx.strokeStyle = '#f66';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(WIDTH / 2, HEIGHT / 2);
+                ctx.lineTo(aimX, aimY);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(aimX, aimY, 10, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+        }
+        return;
+    }
+
+    // Desktop crosshair
     const leader = game.squad[0];
     ctx.strokeStyle = leader && leader.dashTimer <= 0 ? '#0ff' : '#066';
     ctx.lineWidth = 2;
@@ -1264,70 +1489,79 @@ function drawHUD() {
     if (game.combo > 1) {
         const comboScale = 1 + Math.min(game.combo * 0.02, 0.5);
         ctx.save();
-        ctx.translate(WIDTH / 2, 150);
+        ctx.translate(WIDTH / 2, isMobile ? 100 : 150);
         ctx.scale(comboScale, comboScale);
         ctx.fillStyle = game.combo >= 10 ? '#f0f' : (game.combo >= 5 ? '#ff0' : '#fff');
-        ctx.font = 'bold 32px Arial';
+        ctx.font = `bold ${isMobile ? 24 : 32}px Arial`;
         ctx.textAlign = 'center';
         ctx.fillText(`${game.combo}x COMBO`, 0, 0);
         ctx.fillStyle = '#aaa';
-        ctx.font = '14px Arial';
-        ctx.fillText(`+${Math.floor(game.combo * 10)}% Score`, 0, 25);
+        ctx.font = `${isMobile ? 10 : 14}px Arial`;
+        ctx.fillText(`+${Math.floor(game.combo * 10)}% Score`, 0, 20);
         ctx.restore();
         ctx.textAlign = 'left';
     }
 
-    // Coins
-    ctx.fillStyle = '#ffd700';
-    ctx.font = 'bold 18px Arial';
-    ctx.fillText(`💰 ${game.coins}`, 20, HEIGHT - 80);
+    // Desktop-only HUD elements
+    if (!isMobile) {
+        ctx.fillStyle = '#ffd700';
+        ctx.font = 'bold 18px Arial';
+        ctx.fillText(`💰 ${game.coins}`, 20, HEIGHT - 80);
 
-    // Stats
-    ctx.fillStyle = '#0ff';
-    ctx.font = '14px monospace';
-    const liveSquad = game.squad.filter(p => !p.dead).length;
-    ctx.fillText(`SQUAD: ${liveSquad}`, 20, HEIGHT - 55);
-    
-    const enemiesLeft = game.entities.filter(e => e instanceof Enemy && !e.dead).length;
-    ctx.fillText(`ENEMIES: ${enemiesLeft}`, 20, HEIGHT - 35);
+        ctx.fillStyle = '#0ff';
+        ctx.font = '14px monospace';
+        const liveSquad = game.squad.filter(p => !p.dead).length;
+        ctx.fillText(`SQUAD: ${liveSquad}`, 20, HEIGHT - 55);
+        
+        const enemiesLeft = game.entities.filter(e => e instanceof Enemy && !e.dead).length;
+        ctx.fillText(`ENEMIES: ${enemiesLeft}`, 20, HEIGHT - 35);
 
-    ctx.fillStyle = '#666';
-    ctx.font = '11px monospace';
-    ctx.fillText('SPACE: Dash | R: Reload | M: Minimap | ESC: Pause', 20, HEIGHT - 12);
+        ctx.fillStyle = '#666';
+        ctx.font = '11px monospace';
+        ctx.fillText('SPACE: Dash | R: Reload | M: Minimap | ESC: Pause', 20, HEIGHT - 12);
 
-    // Dash cooldown
+        // Dash cooldown bar (desktop)
+        const leader = game.squad[0];
+        if (leader) {
+            const dashPct = Math.min(1, 1 - leader.dashTimer / leader.dashCooldown);
+            ctx.fillStyle = '#222';
+            ctx.fillRect(WIDTH - 120, HEIGHT - 35, 100, 12);
+            ctx.fillStyle = dashPct >= 1 ? '#0ff' : '#055';
+            ctx.fillRect(WIDTH - 120, HEIGHT - 35, 100 * dashPct, 12);
+            ctx.fillStyle = '#fff';
+            ctx.font = '10px Arial';
+            ctx.fillText('DASH', WIDTH - 118, HEIGHT - 25);
+        }
+    }
+
+    // Update stamina bar for dash cooldown (both mobile and desktop)
     const leader = game.squad[0];
     if (leader) {
         const dashPct = Math.min(1, 1 - leader.dashTimer / leader.dashCooldown);
-        ctx.fillStyle = '#222';
-        ctx.fillRect(WIDTH - 120, HEIGHT - 35, 100, 12);
-        ctx.fillStyle = dashPct >= 1 ? '#0ff' : '#055';
-        ctx.fillRect(WIDTH - 120, HEIGHT - 35, 100 * dashPct, 12);
-        ctx.fillStyle = '#fff';
-        ctx.font = '10px Arial';
-        ctx.fillText('DASH', WIDTH - 118, HEIGHT - 25);
+        const staminaBarEl = document.getElementById('stamina-bar');
+        if (staminaBarEl) staminaBarEl.style.width = (dashPct * 100) + '%';
     }
 
     // Wave progress bar
     const waveProgress = game.enemiesSpawned > 0 ? game.killsThisWave / game.enemiesSpawned : 0;
     ctx.fillStyle = '#222';
-    ctx.fillRect(WIDTH/2 - 100, 20, 200, 8);
+    ctx.fillRect(WIDTH/2 - 100, isMobile ? 50 : 20, 200, 8);
     ctx.fillStyle = '#0f0';
-    ctx.fillRect(WIDTH/2 - 100, 20, 200 * Math.min(1, waveProgress), 8);
+    ctx.fillRect(WIDTH/2 - 100, isMobile ? 50 : 20, 200 * Math.min(1, waveProgress), 8);
 }
 
 function drawPauseScreen() {
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 48px Arial';
+    ctx.font = `bold ${isMobile ? 36 : 48}px Arial`;
     ctx.textAlign = 'center';
     ctx.fillText('PAUSED', WIDTH/2, HEIGHT/2 - 50);
-    ctx.font = '20px Arial';
-    ctx.fillText('Press ESC to resume', WIDTH/2, HEIGHT/2 + 10);
+    ctx.font = `${isMobile ? 16 : 20}px Arial`;
+    ctx.fillText(isMobile ? 'Tap pause button to resume' : 'Press ESC to resume', WIDTH/2, HEIGHT/2 + 10);
     
     // Stats
-    ctx.font = '16px Arial';
+    ctx.font = `${isMobile ? 14 : 16}px Arial`;
     ctx.fillStyle = '#0ff';
     ctx.fillText(`High Score: ${persistent.highScore}`, WIDTH/2, HEIGHT/2 + 60);
     ctx.fillText(`High Wave: ${persistent.highWave}`, WIDTH/2, HEIGHT/2 + 85);

@@ -2,17 +2,24 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hive Zero - Tactical Survival</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="screen-orientation" content="landscape">
+    <title>Hive Zero</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            overflow: hidden;
-            background: #050505;
-            color: #eee;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html, body { 
+            overflow: hidden; 
+            background: #050505; 
+            color: #eee; 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            touch-action: none;
+            position: fixed;
+            width: 100%;
+            height: 100%;
         }
-        canvas { display: block; }
+        canvas { display: block; touch-action: none; }
 
         #ui-layer {
             position: absolute;
@@ -22,41 +29,41 @@
             display: flex;
             flex-direction: column;
             justify-content: space-between;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
 
         .hud-top {
             display: flex;
             justify-content: space-between;
-            padding: 15px;
+            padding: 10px;
         }
 
         .player-stats {
-            background: rgba(0, 0, 0, 0.7);
-            padding: 12px 15px;
-            border-left: 4px solid #00ffff;
-            backdrop-filter: blur(5px);
-            border-radius: 0 8px 8px 0;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 8px 12px;
+            border-left: 3px solid #0ff;
+            border-radius: 0 6px 6px 0;
         }
 
         .stat-row {
-            margin-bottom: 6px;
+            margin-bottom: 4px;
             display: flex;
             align-items: center;
-            width: 220px;
+            width: clamp(120px, 25vw, 200px);
         }
 
         .stat-label {
-            width: 60px;
-            font-size: 12px;
+            width: 40px;
+            font-size: clamp(9px, 2vw, 12px);
             color: #aaa;
             text-transform: uppercase;
         }
 
         .bar-bg {
             flex-grow: 1;
-            height: 12px;
+            height: clamp(8px, 2vw, 12px);
             background: #222;
-            border-radius: 6px;
+            border-radius: 4px;
             overflow: hidden;
         }
 
@@ -64,232 +71,345 @@
             height: 100%;
             width: 100%;
             transition: width 0.2s;
-            border-radius: 6px;
+            border-radius: 4px;
         }
 
         #hp-bar {
             background: linear-gradient(90deg, #ff3333, #cc0000);
-            box-shadow: 0 0 10px #ff0000;
+            box-shadow: 0 0 8px #ff0000;
         }
 
         #stamina-bar {
-            background: linear-gradient(90deg, #00ffff, #0088aa);
-            box-shadow: 0 0 10px #00ffff;
+            background: linear-gradient(90deg, #0ff, #088);
+            box-shadow: 0 0 8px #0ff;
         }
 
         .game-info {
             text-align: right;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 12px 15px;
-            border-right: 4px solid #ff00ff;
-            border-radius: 8px 0 0 8px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 8px 12px;
+            border-right: 3px solid #f0f;
+            border-radius: 6px 0 0 6px;
         }
 
         .score {
-            font-size: 22px;
+            font-size: clamp(14px, 3vw, 20px);
             font-weight: bold;
             color: #fff;
         }
 
         .wave {
-            font-size: 16px;
-            color: #ff00ff;
-            margin-top: 4px;
+            font-size: clamp(11px, 2.5vw, 16px);
+            color: #f0f;
         }
 
         .hud-bottom {
-            padding: 15px;
+            padding: 10px;
             display: flex;
             justify-content: space-between;
             align-items: flex-end;
         }
 
         .weapon-info {
-            background: rgba(0, 0, 0, 0.7);
-            padding: 12px 15px;
-            border-bottom: 4px solid #00ffff;
-            border-radius: 8px 8px 0 0;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 8px 12px;
+            border-bottom: 3px solid #0ff;
+            border-radius: 6px 6px 0 0;
         }
 
         .ammo-count {
-            font-size: 28px;
-            font-family: 'Courier New', monospace;
+            font-size: clamp(18px, 4vw, 28px);
+            font-family: monospace;
             font-weight: bold;
             color: #0ff;
         }
 
         .weapon-name {
-            font-size: 12px;
-            color: #00ffff;
-            letter-spacing: 2px;
+            font-size: clamp(9px, 2vw, 12px);
+            color: #0ff;
+            letter-spacing: 1px;
         }
+
+        /* Mobile Controls */
+        #mobile-controls {
+            position: absolute;
+            bottom: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            display: none;
+        }
+
+        .mobile #mobile-controls { display: block; }
+
+        .joystick-area {
+            position: absolute;
+            bottom: 20px;
+            width: 150px;
+            height: 150px;
+            pointer-events: auto;
+        }
+
+        #joystick-move { left: 20px; }
+        #joystick-aim { right: 20px; }
+
+        .joystick-base {
+            width: 100%;
+            height: 100%;
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .joystick-stick {
+            width: 60px;
+            height: 60px;
+            background: rgba(0,255,255,0.5);
+            border: 2px solid #0ff;
+            border-radius: 50%;
+            transition: transform 0.05s;
+        }
+
+        #joystick-aim .joystick-stick {
+            background: rgba(255,100,100,0.5);
+            border-color: #f66;
+        }
+
+        .mobile-btn {
+            position: absolute;
+            pointer-events: auto;
+            background: rgba(255,255,255,0.15);
+            border: 2px solid rgba(255,255,255,0.4);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 0 0 5px #000;
+        }
+
+        #btn-dash {
+            right: 190px;
+            bottom: 100px;
+            width: 70px;
+            height: 70px;
+            background: rgba(0,255,255,0.2);
+            border-color: #0ff;
+        }
+
+        #btn-reload {
+            right: 190px;
+            bottom: 30px;
+            width: 55px;
+            height: 55px;
+            background: rgba(255,255,0,0.2);
+            border-color: #ff0;
+        }
+
+        #btn-pause {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 40px;
+            height: 40px;
+            font-size: 16px;
+            pointer-events: auto;
+            background: rgba(0,0,0,0.5);
+            border: 2px solid #666;
+            border-radius: 8px;
+            color: #fff;
+            display: none;
+        }
+
+        .mobile #btn-pause { display: flex; align-items: center; justify-content: center; }
 
         /* Screens */
         #start-screen, #game-over-screen {
             position: absolute;
             top: 0; left: 0;
             width: 100%; height: 100%;
-            background: linear-gradient(135deg, rgba(0,0,0,0.95) 0%, rgba(10,10,30,0.95) 100%);
+            background: linear-gradient(135deg, rgba(0,0,0,0.95), rgba(10,10,30,0.95));
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
             pointer-events: auto;
             z-index: 10;
+            padding: 20px;
+            overflow-y: auto;
         }
 
         .hidden { display: none !important; }
 
         h1 {
-            font-size: 56px;
-            margin: 0 0 10px 0;
-            color: #00ffff;
-            text-shadow: 0 0 30px #00ffff, 0 0 60px #00ffff;
+            font-size: clamp(32px, 8vw, 56px);
+            color: #0ff;
+            text-shadow: 0 0 30px #0ff;
             text-transform: uppercase;
-            letter-spacing: 8px;
+            letter-spacing: clamp(4px, 1vw, 8px);
         }
 
         .subtitle {
-            font-size: 16px;
+            font-size: clamp(10px, 2.5vw, 16px);
             color: #888;
-            letter-spacing: 4px;
-            margin-bottom: 30px;
+            letter-spacing: 2px;
+            margin-bottom: 20px;
         }
 
         h2 {
-            font-size: 72px;
-            margin: 0 0 20px 0;
-            color: #ff3333;
-            text-shadow: 0 0 30px #ff0000;
+            font-size: clamp(48px, 12vw, 72px);
+            color: #f33;
+            text-shadow: 0 0 30px #f00;
         }
 
         p {
-            font-size: 16px;
+            font-size: clamp(12px, 3vw, 16px);
             color: #aaa;
-            max-width: 500px;
+            max-width: 90%;
             text-align: center;
-            line-height: 1.6;
+            line-height: 1.5;
             margin: 5px 0;
         }
 
         .stats-display {
-            background: rgba(0, 255, 255, 0.1);
+            background: rgba(0,255,255,0.1);
             border: 1px solid #0ff;
-            padding: 15px 30px;
-            margin: 20px 0;
+            padding: 12px 20px;
+            margin: 15px 0;
             border-radius: 8px;
             display: flex;
-            gap: 40px;
+            gap: clamp(20px, 5vw, 40px);
+            flex-wrap: wrap;
+            justify-content: center;
         }
 
-        .stat-item {
+        .stat-item { text-align: center; }
+        .stat-value { font-size: clamp(20px, 5vw, 28px); font-weight: bold; color: #0ff; }
+        .stat-name { font-size: clamp(9px, 2vw, 11px); color: #888; text-transform: uppercase; }
+
+        .controls {
+            display: none;
+            gap: 6px 15px;
+            text-align: left;
+            margin: 15px 0;
+            background: rgba(255,255,255,0.05);
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: clamp(11px, 2.5vw, 14px);
+        }
+
+        .desktop .controls { display: grid; grid-template-columns: auto auto; }
+
+        .mobile-instructions {
+            display: none;
+            background: rgba(255,255,255,0.05);
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin: 15px 0;
             text-align: center;
         }
 
-        .stat-value {
-            font-size: 28px;
-            font-weight: bold;
-            color: #0ff;
-        }
-
-        .stat-name {
-            font-size: 11px;
-            color: #888;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        .controls {
-            display: grid;
-            grid-template-columns: auto auto;
-            gap: 8px 20px;
-            text-align: left;
-            margin: 20px 0;
-            background: rgba(255, 255, 255, 0.05);
-            padding: 15px 25px;
-            border-radius: 8px;
-        }
+        .mobile .mobile-instructions { display: block; }
+        .mobile-instructions p { margin: 8px 0; font-size: clamp(11px, 2.5vw, 14px); }
+        .mobile-instructions .icon { font-size: 20px; margin-right: 8px; }
 
         .key {
             color: #0ff;
             font-weight: bold;
             font-family: monospace;
             background: rgba(0,255,255,0.1);
-            padding: 2px 8px;
+            padding: 2px 6px;
             border-radius: 4px;
         }
 
-        .action { color: #aaa; }
-
         .btn {
             background: transparent;
-            color: #00ffff;
-            border: 2px solid #00ffff;
-            padding: 15px 50px;
-            font-size: 18px;
-            margin-top: 25px;
+            color: #0ff;
+            border: 2px solid #0ff;
+            padding: clamp(12px, 3vw, 15px) clamp(30px, 8vw, 50px);
+            font-size: clamp(14px, 3.5vw, 18px);
+            margin-top: 20px;
             cursor: pointer;
             transition: all 0.3s;
             text-transform: uppercase;
             font-weight: bold;
-            letter-spacing: 3px;
+            letter-spacing: 2px;
             border-radius: 4px;
+            -webkit-tap-highlight-color: transparent;
         }
 
-        .btn:hover {
-            background: #00ffff;
+        .btn:hover, .btn:active {
+            background: #0ff;
             color: #000;
-            box-shadow: 0 0 40px #00ffff;
-            transform: scale(1.05);
+            box-shadow: 0 0 30px #0ff;
         }
 
-        #final-stats {
-            margin: 15px 0;
-            color: #888;
-        }
-
-        #final-stats p {
-            margin: 5px 0;
-            font-size: 14px;
-        }
-
-        /* Persistent Stats on Start Screen */
         .persistent-stats {
             position: absolute;
-            top: 20px;
-            right: 20px;
+            top: 15px;
+            right: 15px;
             background: rgba(0,0,0,0.6);
-            padding: 15px;
+            padding: 10px 15px;
             border-radius: 8px;
             border: 1px solid #333;
         }
 
         .persistent-stats p {
-            font-size: 14px;
-            margin: 5px 0;
+            font-size: clamp(11px, 2.5vw, 14px);
+            margin: 3px 0;
             text-align: right;
         }
 
         .gold { color: #ffd700; }
         .cyan { color: #0ff; }
+
+        #final-stats { margin: 10px 0; }
+        #final-stats p { font-size: clamp(11px, 2.5vw, 14px); }
+
+        /* Landscape lock suggestion */
+        #rotate-device {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: #000;
+            z-index: 9999;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+        }
+
+        #rotate-device .icon { font-size: 48px; margin-bottom: 20px; }
+        #rotate-device p { font-size: 16px; color: #aaa; }
+
+        @media (max-width: 600px) and (orientation: portrait) {
+            #rotate-device { display: flex; }
+        }
     </style>
 </head>
 <body>
+
+<div id="rotate-device">
+    <div class="icon">📱↔️</div>
+    <p>Please rotate your device to landscape mode</p>
+</div>
 
 <div id="ui-layer">
     <div class="hud-top">
         <div class="player-stats">
             <div class="stat-row">
-                <div class="stat-label">Health</div>
-                <div class="bar-bg">
-                    <div id="hp-bar" class="bar-fill"></div>
-                </div>
+                <div class="stat-label">HP</div>
+                <div class="bar-bg"><div id="hp-bar" class="bar-fill"></div></div>
             </div>
             <div class="stat-row">
-                <div class="stat-label">Dash</div>
-                <div class="bar-bg">
-                    <div id="stamina-bar" class="bar-fill"></div>
-                </div>
+                <div class="stat-label">DASH</div>
+                <div class="bar-bg"><div id="stamina-bar" class="bar-fill"></div></div>
             </div>
         </div>
         <div class="game-info">
@@ -297,7 +417,6 @@
             <div class="wave">WAVE <span id="wave-val">1</span></div>
         </div>
     </div>
-
     <div class="hud-bottom">
         <div class="weapon-info">
             <div class="weapon-name">RIFLE</div>
@@ -306,43 +425,54 @@
     </div>
 </div>
 
+<div id="mobile-controls">
+    <div id="joystick-move" class="joystick-area">
+        <div class="joystick-base"><div class="joystick-stick" id="stick-move"></div></div>
+    </div>
+    <div id="joystick-aim" class="joystick-area">
+        <div class="joystick-base"><div class="joystick-stick" id="stick-aim"></div></div>
+    </div>
+    <div id="btn-dash" class="mobile-btn">DASH</div>
+    <div id="btn-reload" class="mobile-btn">R</div>
+    <button id="btn-pause">⏸</button>
+</div>
+
 <div id="start-screen">
     <div class="persistent-stats">
-        <p class="gold">💰 COINS: <span id="coins-display">0</span></p>
-        <p class="cyan">🏆 HIGH SCORE: <span id="high-score">0</span></p>
+        <p class="gold">💰 <span id="coins-display">0</span></p>
+        <p class="cyan">🏆 <span id="high-score">0</span></p>
     </div>
 
     <h1>HIVE ZERO</h1>
-    <p class="subtitle">TACTICAL SURVIVAL SHOOTER</p>
-    
-    <p>You are the last Shadow Operative.<br>The Hive Guardians have taken the city.</p>
+    <p class="subtitle">TACTICAL SURVIVAL</p>
+    <p>Survive the Hive. Upgrade your squad.</p>
     
     <div class="controls">
-        <span class="key">MOUSE</span><span class="action">Move & Aim</span>
-        <span class="key">CLICK</span><span class="action">Auto-Fire</span>
-        <span class="key">SPACE</span><span class="action">Dash (Invincible)</span>
-        <span class="key">R</span><span class="action">Reload</span>
-        <span class="key">M</span><span class="action">Toggle Minimap</span>
-        <span class="key">ESC</span><span class="action">Pause</span>
+        <span class="key">MOUSE</span><span>Move & Aim</span>
+        <span class="key">CLICK</span><span>Auto-Fire</span>
+        <span class="key">SPACE</span><span>Dash</span>
+        <span class="key">R</span><span>Reload</span>
+    </div>
+
+    <div class="mobile-instructions">
+        <p><span class="icon">🕹️</span> LEFT stick: Move</p>
+        <p><span class="icon">🎯</span> RIGHT stick: Aim & Fire</p>
+        <p><span class="icon">💨</span> DASH button: Dodge</p>
     </div>
     
-    <button class="btn" id="start-btn">DEPLOY</button>
+    <button class="btn" id="start-btn">PLAY</button>
 </div>
 
 <div id="game-over-screen" class="hidden">
     <h2>K.I.A.</h2>
-    <p>The mission failed. The Hive consumes all.</p>
-    
     <div class="stats-display">
         <div class="stat-item">
             <div class="stat-value" id="final-score">0</div>
             <div class="stat-name">Score</div>
         </div>
     </div>
-    
     <div id="final-stats"></div>
-    
-    <button class="btn" id="restart-btn">RETRY MISSION</button>
+    <button class="btn" id="restart-btn">RETRY</button>
 </div>
 
 <canvas id="gameCanvas"></canvas>
